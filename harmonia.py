@@ -185,7 +185,8 @@ class SmartHarmonia(base_agent.BaseAgent):
         self.previous_killed_unit_score = 0
         self.previous_killed_building_score = 0
 
-
+        self.previous_action = None
+        self.previous_state = None
 
     def transformLocation(self, x, x_distance, y, y_distance):
         if not self.base_top_left:
@@ -198,8 +199,6 @@ class SmartHarmonia(base_agent.BaseAgent):
         
         player_y, player_x = (obs.observation['minimap'][_PLAYER_RELATIVE] == _PLAYER_SELF).nonzero()
         self.base_top_left = 1 if player_y.any() and player_y.mean() <= 31 else 0
-
-
 
         unit_type = obs.observation['screen'][_UNIT_TYPE]
 
@@ -222,17 +221,25 @@ class SmartHarmonia(base_agent.BaseAgent):
             army_supply,
         ]
 
-        reward = 0
+        if self.previous_action is not None:
+            reward = 0
 
-        if killed_unit_score > self.previous_killed_unit_score:
-            reward += KILL_UNIT_REWARD
+            if killed_unit_score > self.previous_killed_unit_score:
+                reward += KILL_UNIT_REWARD
 
-        if killed_building_score > self.previous_killed_building_score:
-            reward += KILL_BUILDING_REWARD
+            if killed_building_score > self.previous_killed_building_score:
+                reward += KILL_BUILDING_REWARD
 
+            self.qlearn.learn(str(self.previous_state), self.previous_action, reward, str(current_state))
 
         rl_action = self.qlearn.choose_action(str(current_state))
         smart_action = smart_actions[rl_action]
+
+        self.previous_killed_unit_score = killed_unit_score
+        self.previous_killed_building_score = killed_building_score
+        self.previous_state = current_state
+        self.previous_action = rl_action
+
 
         # this is to chose a random action
         #smart_action = smart_actions[random.randrange(0, len(smart_actions) - 1)]
