@@ -42,7 +42,7 @@ _NOT_QUEUED = [0]
 _QUEUED = [1]
 _SUPPLY_USED = 3
 _SUPPLY_MAX = 4
-
+_MINERALS_COUNT = 1
 
 ACTION_DO_NOTHING = 'donothing'
 ACTION_SELECT_SCV = 'selectscv'
@@ -66,6 +66,7 @@ smart_actions = [
 
 KILL_UNIT_REWARD = 0.2
 KILL_BUILDING_REWARD = 0.5
+ECONOMY_REWARD = 0.1
 
 class Harmonia(base_agent.BaseAgent):
     # Properties
@@ -81,9 +82,6 @@ class Harmonia(base_agent.BaseAgent):
 
     def step(self, obs):
         super(Harmonia, self).step(obs)
-		
-
-        #time.sleep(0.5)
 
         if self.base_top_left is None:
             player_y, player_x = (obs.observation["minimap"][_PLAYER_RELATIVE] == _PLAYER_SELF).nonzero()
@@ -109,7 +107,7 @@ class Harmonia(base_agent.BaseAgent):
 
                 self.supply_depot_built = True
 
-                return actions.FunctionCall(_BUILD_SUPPLYDEPOT, [_NOT_QUEUED, target])
+                return actions.FunctionCall(_BUILD_SUPPLY_DEPOT, [_NOT_QUEUED, target])
 
         if not self.barracks_built:
             if _BUILD_BARRACKS in obs.observation["available_actions"]:
@@ -187,6 +185,10 @@ class SmartHarmonia(base_agent.BaseAgent):
 
         self.previous_action = None
         self.previous_state = None
+        self.previous_mineral_speed = 0
+        self.previous_mineral_count = 50;
+        self.mineral_counts = []
+
 
     def transformLocation(self, x, x_distance, y, y_distance):
         if not self.base_top_left:
@@ -201,6 +203,12 @@ class SmartHarmonia(base_agent.BaseAgent):
         self.base_top_left = 1 if player_y.any() and player_y.mean() <= 31 else 0
 
         unit_type = obs.observation['screen'][_UNIT_TYPE]
+        mineral_count = obs.observation['player'][_MINERALS_COUNT]
+        self.mineral_counts.append(mineral_count - self.previous_mineral_count)
+        if len(self.mineral_counts) > 16:
+            self.mineral_counts.pop(0)
+
+        mineral_speed = np.sum(self.mineral_counts)
 
         depot_y, depot_x = (unit_type == _TERRAN_SUPPLY_DEPOT).nonzero()
         supply_depot_count = 1 if depot_y.any() else 0
@@ -230,6 +238,12 @@ class SmartHarmonia(base_agent.BaseAgent):
             if killed_building_score > self.previous_killed_building_score:
                 reward += KILL_BUILDING_REWARD
 
+            if mineral_speed > self.previous_mineral_speed:
+                reward += ECONOMY_REWARD
+            else:
+                reward -= ECONOMY_REWARD
+
+
             self.qlearn.learn(str(self.previous_state), self.previous_action, reward, str(current_state))
 
         rl_action = self.qlearn.choose_action(str(current_state))
@@ -239,7 +253,8 @@ class SmartHarmonia(base_agent.BaseAgent):
         self.previous_killed_building_score = killed_building_score
         self.previous_state = current_state
         self.previous_action = rl_action
-
+        self.previous_mineral_count = mineral_count
+        self.previous_mineral_speed = mineral_speed
 
         # this is to chose a random action
         #smart_action = smart_actions[random.randrange(0, len(smart_actions) - 1)]
